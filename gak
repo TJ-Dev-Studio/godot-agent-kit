@@ -32,6 +32,7 @@ AI-agent toolkit for visual iteration on Godot 4 projects.
 COMMANDS:
   preview    Capture rendered screenshots from scenes (wraps godot-preview)
   interact   Simulate player input and capture results (wraps godot-interact)
+  swarm      Orchestrate parallel Claude Code instances (wraps claude-swarm)
   setup      Install/update sub-tools
   tools      List installed tools
   help       Show this help
@@ -39,6 +40,7 @@ COMMANDS:
 USAGE:
   gak preview capture <project> <scene> [options]
   gak interact <project> <scene> --actions <actions.json> [options]
+  gak swarm init|claim|status|prompt|merge|validate|complete [args]
   gak setup
 
 EXAMPLES:
@@ -48,6 +50,12 @@ EXAMPLES:
   # Simulate a touch-drag and capture the result
   gak interact ./godot_project res://scenes/lobby.tscn \
     --actions '{"actions":[{"type":"wait","seconds":2},{"type":"drag","from":[540,960],"to":[200,960],"duration":1}]}'
+
+  # Orchestrate parallel build with multiple Claude instances
+  gak swarm init
+  gak swarm claim 3
+  gak swarm status
+  gak swarm prompt
 
   # Setup tools (clones sub-repos if needed)
   gak setup
@@ -59,6 +67,7 @@ ENVIRONMENT:
 SUB-TOOL REPOS:
   godot-preview   → tools/godot-preview/   (visual capture)
   godot-interact  → tools/godot-interact/  (input simulation)
+  claude-swarm    → tools/claude-swarm/    (parallel agent orchestration)
 EOF
 }
 
@@ -76,6 +85,10 @@ resolve_tool() {
         interact|godot-interact)
             tool_dir="$TOOLS_DIR/godot-interact"
             script_name="godot_interact.sh"
+            ;;
+        swarm|claude-swarm)
+            tool_dir="$TOOLS_DIR/claude-swarm"
+            script_name="swarm"
             ;;
         *)
             err "Unknown tool: $tool_name"
@@ -118,6 +131,17 @@ cmd_setup() {
         }
     fi
 
+    # claude-swarm
+    if [[ -d "$TOOLS_DIR/claude-swarm" ]]; then
+        log "claude-swarm: updating..."
+        (cd "$TOOLS_DIR/claude-swarm" && git pull --quiet 2>/dev/null) || true
+    else
+        log "claude-swarm: cloning..."
+        git clone --quiet https://github.com/TJ-Dev-Studio/claude-swarm.git "$TOOLS_DIR/claude-swarm" 2>/dev/null || {
+            warn "Could not clone claude-swarm. You can manually place it in $TOOLS_DIR/claude-swarm/"
+        }
+    fi
+
     ok "Setup complete. Installed tools:"
     cmd_tools
 }
@@ -129,7 +153,7 @@ cmd_tools() {
             name="$(basename "$tool_dir")"
             local status="installed"
             # Check for main script
-            if [[ -x "$tool_dir/godot_preview.sh" ]] || [[ -x "$tool_dir/godot_interact.sh" ]]; then
+            if [[ -x "$tool_dir/godot_preview.sh" ]] || [[ -x "$tool_dir/godot_interact.sh" ]] || [[ -x "$tool_dir/swarm" ]]; then
                 status="${GREEN}ready${NC}"
             else
                 status="${RED}missing script${NC}"
@@ -151,10 +175,17 @@ cmd_interact() {
     exec "$tool" "$@"
 }
 
+cmd_swarm() {
+    local tool
+    tool="$(resolve_tool swarm)"
+    exec "$tool" "$@"
+}
+
 # --- Main ---
 case "${1:-help}" in
     preview) shift; cmd_preview "$@" ;;
     interact) shift; cmd_interact "$@" ;;
+    swarm) shift; cmd_swarm "$@" ;;
     setup) shift; cmd_setup "$@" ;;
     tools) cmd_tools ;;
     help|-h|--help) usage ;;
