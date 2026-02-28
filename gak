@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# gak — Godot Agent Kit
+#
+# Unified CLI for AI agents working with Godot projects.
+# Routes to sub-tools: preview, interact, (future: audio, perf, etc.)
+#
+# Usage:
+#   gak preview capture <project> <scene> [options]
+#   gak interact <project> <scene> --actions <file> [options]
+#   gak setup [--tools-dir <path>]
+
+set -euo pipefail
+
+GAK_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLS_DIR="${GAK_TOOLS_DIR:-$GAK_DIR/tools}"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+err() { echo -e "${RED}[gak]${NC} $*" >&2; }
+log() { echo -e "${CYAN}[gak]${NC} $*"; }
+ok()  { echo -e "${GREEN}[gak]${NC} $*"; }
+
+usage() {
+    cat <<'EOF'
+gak — Godot Agent Kit
+
+AI-agent toolkit for visual iteration on Godot 4 projects.
+
+COMMANDS:
+  preview    Capture rendered screenshots from scenes (wraps godot-preview)
+  interact   Simulate player input and capture results (wraps godot-interact)
+  setup      Install/update sub-tools
+  tools      List installed tools
+  help       Show this help
+
+USAGE:
+  gak preview capture <project> <scene> [options]
+  gak interact <project> <scene> --actions <actions.json> [options]
+  gak setup
+
+EXAMPLES:
+  # Capture a lobby scene at phone resolution
+  gak preview capture ./godot_project res://scenes/lobby.tscn
+
+  # Simulate a touch-drag and capture the result
+  gak interact ./godot_project res://scenes/lobby.tscn \
+    --actions '{"actions":[{"type":"wait","seconds":2},{"type":"drag","from":[540,960],"to":[200,960],"duration":1}]}'
+
+  # Setup tools (clones sub-repos if needed)
+  gak setup
+
+ENVIRONMENT:
+  GODOT_BIN       Path to Godot binary
+  GAK_TOOLS_DIR   Override tools directory (default: <gak-dir>/tools)
+
+SUB-TOOL REPOS:
+  godot-preview   → tools/godot-preview/   (visual capture)
+  godot-interact  → tools/godot-interact/  (input simulation)
+EOF
+}
+
+# Resolve a tool path — checks tools/ dir for the tool
+resolve_tool() {
+    local tool_name="$1"
+    local tool_dir="$TOOLS_DIR/$tool_name"
+    local script_name=""
+
+    case "$tool_name" in
+        preview|godot-preview)
+            tool_dir="$TOOLS_DIR/godot-preview"
+            script_name="godot_preview.sh"
+            ;;
+        interact|godot-interact)
+            tool_dir="$TOOLS_DIR/godot-interact"
+            script_name="godot_interact.sh"
+            ;;
+        *)
+            err "Unknown tool: $tool_name"
+            exit 1
+            ;;
+    esac
+
+    if [[ -x "$tool_dir/$script_name" ]]; then
+        echo "$tool_dir/$script_name"
+    else
+        err "Tool not installed: $tool_name"
+        err "Run 'gak setup' to install tools, or place them in $TOOLS_DIR/"
+        exit 1
+    fi
+}
+
+cmd_setup() {
+    log "Setting up Godot Agent Kit tools..."
+    mkdir -p "$TOOLS_DIR"
+
+    # godot-preview
+    if [[ -d "$TOOLS_DIR/godot-preview" ]]; then
+        log "godot-preview: updating..."
+        (cd "$TOOLS_DIR/godot-preview" && git pull --quiet 2>/dev/null) || true
+    else
+        log "godot-preview: cloning..."
+        git clone --quiet https://github.com/TJ-Dev-Studio/godot-preview.git "$TOOLS_DIR/godot-preview" 2>/dev/null || {
+            warn "Could not clone godot-preview. You can manually place it in $TOOLS_DIR/godot-preview/"
+        }
+    fi
+
+    # godot-interact
+    if [[ -d "$TOOLS_DIR/godot-interact" ]]; then
+        log "godot-interact: updating..."
+        (cd "$TOOLS_DIR/godot-interact" && git pull --quiet 2>/dev/null) || true
+    else
+        log "godot-interact: cloning..."
+        git clone --quiet https://github.com/TJ-Dev-Studio/godot-interact.git "$TOOLS_DIR/godot-interact" 2>/dev/null || {
+            warn "Could not clone godot-interact. You can manually place it in $TOOLS_DIR/godot-interact/"
+        }
+    fi
+
+    ok "Setup complete. Installed tools:"
+    cmd_tools
+}
+
+cmd_tools() {
+    for tool_dir in "$TOOLS_DIR"/*/; do
+        if [[ -d "$tool_dir" ]]; then
+            local name
+            name="$(basename "$tool_dir")"
+            local status="installed"
+            # Check for main script
+            if [[ -x "$tool_dir/godot_preview.sh" ]] || [[ -x "$tool_dir/godot_interact.sh" ]]; then
+                status="${GREEN}ready${NC}"
+            else
+                status="${RED}missing script${NC}"
+            fi
+            echo -e "  $name  $status"
+        fi
+    done
+}
+
+cmd_preview() {
+    local tool
+    tool="$(resolve_tool preview)"
+    exec "$tool" "$@"
+}
+
+cmd_interact() {
+    local tool
+    tool="$(resolve_tool interact)"
+    exec "$tool" "$@"
+}
+
+# --- Main ---
+case "${1:-help}" in
+    preview) shift; cmd_preview "$@" ;;
+    interact) shift; cmd_interact "$@" ;;
+    setup) shift; cmd_setup "$@" ;;
+    tools) cmd_tools ;;
+    help|-h|--help) usage ;;
+    *) err "Unknown command: $1"; echo; usage; exit 1 ;;
+esac
