@@ -1,4 +1,6 @@
 tools/
+node_modules/
+dist/
 /tmp/
 *.avi
 *.log

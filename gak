@@ -5,6 +5,7 @@
 # Routes to sub-tools: preview, interact, (future: audio, perf, etc.)
 #
 # Usage:
+#   gak init [project-path]       — install skills into a Godot project
 #   gak preview capture <project> <scene> [options]
 #   gak interact <project> <scene> --actions <file> [options]
 #   gak setup [--tools-dir <path>]
@@ -30,6 +31,7 @@ gak — Godot Agent Kit
 AI-agent toolkit for visual iteration on Godot 4 projects.
 
 COMMANDS:
+  init       Install GAK skills into a Godot project (run once per project)
   preview    Capture rendered screenshots from scenes (wraps godot-preview)
   interact   Simulate player input and capture results (wraps godot-interact)
   swarm      Orchestrate parallel Claude Code instances (wraps claude-swarm)
@@ -38,6 +40,7 @@ COMMANDS:
   help       Show this help
 
 USAGE:
+  gak init [project-path]
   gak preview capture <project> <scene> [options]
   gak interact <project> <scene> --actions <actions.json> [options]
   gak swarm init|claim|status|prompt|merge|validate|complete [args]
@@ -181,11 +184,248 @@ cmd_swarm() {
     exec "$tool" "$@"
 }
 
+cmd_init() {
+    local project_dir="${1:-.}"
+    project_dir="$(cd "$project_dir" && pwd)"
+
+    if [[ ! -f "$project_dir/project.godot" ]]; then
+        err "No project.godot in: $project_dir"
+        err "Run from your Godot project root, or pass the path: gak init <project-path>"
+        exit 1
+    fi
+
+    # Compute relative path from project to GAK
+    local gak_rel
+    gak_rel="$(python3 -c "import os; print(os.path.relpath('$GAK_DIR', '$project_dir'))")"
+
+    log "Installing GAK skills into $project_dir"
+    log "GAK location: $gak_rel/ (relative to project)"
+
+    # Ensure sub-tools are installed
+    if [[ ! -d "$TOOLS_DIR/godot-preview" ]]; then
+        log "Sub-tools not found. Running setup first..."
+        cmd_setup
+    fi
+
+    # Ensure npm deps are installed
+    if [[ ! -d "$GAK_DIR/node_modules" ]]; then
+        log "Installing Node.js dependencies..."
+        (cd "$GAK_DIR" && npm install --silent 2>/dev/null) || {
+            err "npm install failed. Ensure Node.js 18+ is installed."
+            exit 1
+        }
+    fi
+
+    local skills_dir="$project_dir/.claude/skills"
+    mkdir -p "$skills_dir"
+
+    # --- preview-capture ---
+    mkdir -p "$skills_dir/preview-capture"
+    cat > "$skills_dir/preview-capture/SKILL.md" <<SKILL
+---
+name: preview-capture
+description: Capture a rendered screenshot of a Godot 4 scene as PNG. Use when you need to see what a scene looks like, verify visual changes, or check camera/lighting/layout. Works without display access.
+argument-hint: <project-path> <scene-path> [options]
+allowed-tools: Bash(npx tsx *), Read
+---
+
+# Preview Capture
+
+Render a Godot 4 scene and extract a PNG screenshot.
+
+## Run
+
+\`\`\`bash
+npx tsx ${gak_rel}/src/preview-capture.ts \$ARGUMENTS
+\`\`\`
+
+Returns structured JSON:
+\`\`\`json
+{"success": true, "output_path": "/tmp/godot-preview/lobby.png", "scene": "res://scenes/lobby.tscn", "resolution": "1080x1920", "frame": 5, "warnings": [], "errors": []}
+\`\`\`
+
+After capture, read the output PNG with the Read tool to see the rendered scene.
+
+## Options
+- \`-r, --resolution WxH\` (default: 1080x1920) — viewport resolution
+- \`-f, --frame N\` (default: 5) — frame to extract (0 is often blank)
+- \`-s, --seconds N\` (default: 10) — render duration
+- \`--fps N\` (default: 1) — render FPS
+- \`-o, --output PATH\` — custom output path
+- \`-v, --verbose\` — include Godot log
+
+## Tips
+- Frame 0 is often blank — use frame 3-5 for a settled scene
+- Use 1080x1920 for portrait mobile, 1280x720 for landscape
+- Increase --seconds for scenes with animations or orbit cameras
+SKILL
+
+    # --- preview-list ---
+    mkdir -p "$skills_dir/preview-list"
+    cat > "$skills_dir/preview-list/SKILL.md" <<SKILL
+---
+name: preview-list
+description: List all .tscn scene files in a Godot project. Use when you need to discover what scenes are available before capturing or interacting with them.
+argument-hint: <project-path>
+allowed-tools: Bash(npx tsx *)
+---
+
+# List Godot Scenes
+
+\`\`\`bash
+npx tsx ${gak_rel}/src/preview-list.ts \$ARGUMENTS
+\`\`\`
+
+Returns structured JSON with scene paths in res:// format.
+SKILL
+
+    # --- interact ---
+    mkdir -p "$skills_dir/interact"
+    cat > "$skills_dir/interact/SKILL.md" <<SKILL
+---
+name: interact
+description: Simulate player input (touch, drag, key press, scroll) in a Godot 4 scene and capture the result as PNG. Use when you need to test how a scene responds to user interaction.
+argument-hint: <project-path> <scene-path> --actions <json> [options]
+allowed-tools: Bash(npx tsx *), Read
+---
+
+# Interact — Simulate Input and Capture
+
+\`\`\`bash
+npx tsx ${gak_rel}/src/interact.ts \$ARGUMENTS
+\`\`\`
+
+## Action JSON Format
+\`\`\`json
+{
+  "actions": [
+    {"type": "wait", "seconds": 2},
+    {"type": "touch", "position": [540, 960]},
+    {"type": "drag", "from": [540, 960], "to": [200, 960], "duration": 0.5},
+    {"type": "key", "key": "ui_accept"},
+    {"type": "scroll", "position": [540, 960], "direction": "up", "amount": 3}
+  ]
+}
+\`\`\`
+
+After interaction, read the output PNG to see the result.
+
+## Options
+- \`-r, --resolution WxH\` (default: 1080x1920)
+- \`-s, --seconds N\` (default: 15) — total render time
+- \`--fps N\` (default: 2)
+- \`--capture WHEN\` (default: last)
+- \`-v, --verbose\`
+SKILL
+
+    # --- swarm ---
+    mkdir -p "$skills_dir/swarm"
+    cat > "$skills_dir/swarm/SKILL.md" <<SKILL
+---
+name: swarm
+description: Orchestrate parallel Claude Code instances for large-scale Godot builds. Use when a task decomposes into 3+ independent work streams with clear file ownership boundaries.
+disable-model-invocation: true
+argument-hint: <subcommand> [args]
+allowed-tools: Bash(npx tsx *), Read, Write, Edit
+---
+
+# Swarm — Parallel Build Orchestration
+
+\`\`\`bash
+npx tsx ${gak_rel}/src/swarm.ts \$ARGUMENTS
+\`\`\`
+
+## Subcommands
+- \`init\` — scaffold .swarm/ directory
+- \`task-add "Title"\` — create a task
+- \`task-list\` — list all tasks
+- \`claim [N]\` — claim next or specific task
+- \`status\` — show overview
+- \`prompt\` — generate startup text for new agents
+- \`validate N\` — check file ownership
+- \`complete N\` — mark done
+- \`merge N\` — merge task branch
+SKILL
+
+    # --- setup ---
+    mkdir -p "$skills_dir/setup"
+    cat > "$skills_dir/setup/SKILL.md" <<SKILL
+---
+name: gak-setup
+description: Install or update GAK sub-tools and dependencies. Run this if preview/interact/swarm skills fail with missing tools.
+disable-model-invocation: true
+allowed-tools: Bash(${gak_rel}/gak *), Bash(npm *)
+---
+
+# GAK Setup
+
+\`\`\`bash
+${gak_rel}/gak setup && (cd ${gak_rel} && npm install)
+\`\`\`
+
+Requires: Godot 4.x, ffmpeg, Node.js 18+, git.
+SKILL
+
+    # --- visual-iteration (model-only) ---
+    mkdir -p "$skills_dir/visual-iteration"
+    cat > "$skills_dir/visual-iteration/SKILL.md" <<SKILL
+---
+name: visual-iteration
+description: Knowledge about the Godot visual iteration workflow — capture, inspect, edit, re-capture loop. Use when working with .tscn or .gd files.
+user-invocable: false
+---
+
+# Godot Visual Iteration
+
+1. Read .tscn/.gd files to understand the scene
+2. /preview-capture <project> <scene> to render to PNG
+3. Read the output PNG to see the rendered 3D result
+4. Identify issues (camera, lighting, layout)
+5. Edit source files to fix
+6. Capture again to verify
+
+Use /interact to test how scenes respond to player input.
+For large builds (3+ independent streams), suggest /swarm init.
+SKILL
+
+    # --- swarm-guide (model-only) ---
+    mkdir -p "$skills_dir/swarm-guide"
+    cat > "$skills_dir/swarm-guide/SKILL.md" <<SKILL
+---
+name: swarm-guide
+description: Knowledge about parallel build orchestration. Use when user mentions multiple instances or task decomposes into 3+ independent work streams.
+user-invocable: false
+---
+
+# When to Suggest Swarm
+
+- Task decomposes into 3+ independent work streams
+- Multiple scenes/components compose into a whole
+- File boundaries are clear (different agents own different files)
+
+File ownership is the key principle: every file owned by exactly one task, no conflicts.
+Use /swarm init to get started.
+SKILL
+
+    ok "Skills installed to $skills_dir/"
+    ok ""
+    ok "Skills available:"
+    echo -e "  ${GREEN}/preview-capture${NC}  — render scene to PNG"
+    echo -e "  ${GREEN}/preview-list${NC}     — list project scenes"
+    echo -e "  ${GREEN}/interact${NC}         — simulate input + capture"
+    echo -e "  ${GREEN}/swarm${NC}            — parallel build orchestration"
+    echo -e "  ${GREEN}/gak-setup${NC}        — install/update tools"
+    echo ""
+    ok "Claude auto-discovers visual-iteration and swarm-guide knowledge."
+    ok "Done! Fire up Claude Code and start building."
+}
+
 # --- Main ---
 case "${1:-help}" in
     preview) shift; cmd_preview "$@" ;;
     interact) shift; cmd_interact "$@" ;;
     swarm) shift; cmd_swarm "$@" ;;
+    init) shift; cmd_init "$@" ;;
     setup) shift; cmd_setup "$@" ;;
     tools) cmd_tools ;;
     help|-h|--help) usage ;;
