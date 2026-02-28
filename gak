@@ -343,21 +343,29 @@ SKILL
 
     # --- setup ---
     mkdir -p "$skills_dir/setup"
+    local gak_repo_url
+    gak_repo_url="$(cd "$GAK_DIR" && git remote get-url origin 2>/dev/null || echo "https://github.com/TJ-Dev-Studio/godot-agent-kit.git")"
     cat > "$skills_dir/setup/SKILL.md" <<SKILL
 ---
 name: gak-setup
-description: Install or update GAK sub-tools and dependencies. Run this if preview/interact/swarm skills fail with missing tools.
+description: Install or update GAK sub-tools and dependencies. Run this if preview/interact/swarm skills fail with missing tools. Self-bootstrapping — clones GAK if not present.
 disable-model-invocation: true
-allowed-tools: Bash(${gak_rel}/gak *), Bash(npm *)
+allowed-tools: Bash(git clone *), Bash(${gak_rel}/gak *), Bash(npm *), Bash(cd *)
 ---
 
 # GAK Setup
 
+First-time setup or update. Handles cloning GAK if not present.
+
 \`\`\`bash
-${gak_rel}/gak setup && (cd ${gak_rel} && npm install)
+if [ ! -d "${gak_rel}" ]; then git clone ${gak_repo_url} ${gak_rel}; fi && ${gak_rel}/gak setup && (cd ${gak_rel} && npm install)
 \`\`\`
 
 Requires: Godot 4.x, ffmpeg, Node.js 18+, git.
+
+## Auto-Update
+
+GAK auto-updates itself and all sub-tools on first skill invocation per session (1hr cooldown). No manual update commands needed.
 SKILL
 
     # --- visual-iteration (model-only) ---
