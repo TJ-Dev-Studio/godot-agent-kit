@@ -5,3 +5,4 @@ dist/
 *.avi
 *.log
 .DS_Store
+.gak-last-update

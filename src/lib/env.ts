@@ -1,7 +1,9 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+
+const UPDATE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 export interface Environment {
   ready: boolean;
@@ -9,6 +11,7 @@ export interface Environment {
   toolsDir: string;
   godotBin: string;
   missing: string[];
+  updated: boolean;
 }
 
 /** Find the GAK root directory (where `gak` script lives) */
@@ -28,12 +31,116 @@ function commandExists(cmd: string): boolean {
   }
 }
 
+/** Check if a directory is a git repo */
+function isGitRepo(dir: string): boolean {
+  return existsSync(resolve(dir, ".git"));
+}
+
+/** Pull latest for a git repo. Returns true if changes were fetched. */
+function gitPull(dir: string): boolean {
+  try {
+    const before = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: dir,
+      stdio: "pipe",
+    }).toString().trim();
+
+    execFileSync("git", ["pull", "--quiet", "--ff-only"], {
+      cwd: dir,
+      stdio: "pipe",
+      timeout: 15_000,
+    });
+
+    const after = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: dir,
+      stdio: "pipe",
+    }).toString().trim();
+
+    return before !== after;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Auto-update GAK and all sub-tools if cooldown has elapsed.
+ * Runs silently — never throws, never blocks on failure.
+ * Returns true if any repo was updated.
+ */
+function ensureUpToDate(gakDir: string, toolsDir: string): boolean {
+  const stampFile = resolve(gakDir, ".gak-last-update");
+
+  // Check cooldown
+  try {
+    if (existsSync(stampFile)) {
+      const stamp = parseInt(readFileSync(stampFile, "utf-8").trim(), 10);
+      if (Date.now() - stamp < UPDATE_COOLDOWN_MS) {
+        return false; // Within cooldown — skip
+      }
+    }
+  } catch {
+    // Stamp unreadable — proceed with update
+  }
+
+  let anyUpdated = false;
+
+  try {
+    // Pull GAK itself
+    if (isGitRepo(gakDir)) {
+      const lockBefore = existsSync(resolve(gakDir, "package-lock.json"))
+        ? statSync(resolve(gakDir, "package-lock.json")).mtimeMs
+        : 0;
+
+      if (gitPull(gakDir)) {
+        anyUpdated = true;
+
+        // Re-install npm deps if package-lock changed
+        const lockAfter = existsSync(resolve(gakDir, "package-lock.json"))
+          ? statSync(resolve(gakDir, "package-lock.json")).mtimeMs
+          : 0;
+
+        if (lockAfter !== lockBefore) {
+          try {
+            execFileSync("npm", ["install", "--silent"], {
+              cwd: gakDir,
+              stdio: "pipe",
+              timeout: 30_000,
+            });
+          } catch {
+            // Non-fatal
+          }
+        }
+      }
+    }
+
+    // Pull each sub-tool
+    const subToolDirs = ["godot-preview", "godot-interact", "claude-swarm"];
+    for (const name of subToolDirs) {
+      const dir = resolve(toolsDir, name);
+      if (isGitRepo(dir)) {
+        if (gitPull(dir)) {
+          anyUpdated = true;
+        }
+      }
+    }
+
+    // Write new timestamp
+    writeFileSync(stampFile, String(Date.now()), "utf-8");
+  } catch {
+    // Never fail the main flow
+  }
+
+  return anyUpdated;
+}
+
 export function checkEnvironment(): Environment {
   const gakDir = findGakDir();
   const toolsDir = process.env.GAK_TOOLS_DIR || resolve(gakDir, "tools");
   const godotBin =
     process.env.GODOT_BIN ||
     "/Applications/Godot.app/Contents/MacOS/Godot";
+
+  // Auto-update (silent, best-effort, 1hr cooldown)
+  const updated = ensureUpToDate(gakDir, toolsDir);
 
   const missing: string[] = [];
 
@@ -71,6 +178,7 @@ export function checkEnvironment(): Environment {
     toolsDir,
     godotBin,
     missing,
+    updated,
   };
 }
 
