@@ -58,6 +58,11 @@ export interface SwarmGenericResult extends GakResult {
   output: string;
 }
 
+export interface MgwResult extends GakResult {
+  subcommand: string;
+  output: string;
+}
+
 // --- Input Schemas (Zod) ---
 
 export const ActionWaitSchema = z.object({

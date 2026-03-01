@@ -35,6 +35,7 @@ COMMANDS:
   preview    Capture rendered screenshots from scenes (wraps godot-preview)
   interact   Simulate player input and capture results (wraps godot-interact)
   swarm      Orchestrate parallel Claude Code instances (wraps claude-swarm)
+  mgw        GitHub issue-to-PR automation (wraps mgw)
   setup      Install/update sub-tools
   tools      List installed tools
   help       Show this help
@@ -44,6 +45,7 @@ USAGE:
   gak preview capture <project> <scene> [options]
   gak interact <project> <scene> --actions <actions.json> [options]
   gak swarm init|claim|status|prompt|merge|validate|complete [args]
+  gak mgw issues|run|status|sync|pr|milestone|init|next [args]
   gak setup
 
 EXAMPLES:
@@ -60,6 +62,11 @@ EXAMPLES:
   gak swarm status
   gak swarm prompt
 
+  # GitHub issue-to-PR automation
+  gak mgw issues
+  gak mgw run 42
+  gak mgw status
+
   # Setup tools (clones sub-repos if needed)
   gak setup
 
@@ -71,6 +78,7 @@ SUB-TOOL REPOS:
   godot-preview   → tools/godot-preview/   (visual capture)
   godot-interact  → tools/godot-interact/  (input simulation)
   claude-swarm    → tools/claude-swarm/    (parallel agent orchestration)
+  mgw             → tools/mgw/            (GitHub issue-to-PR automation)
 EOF
 }
 
@@ -92,6 +100,10 @@ resolve_tool() {
         swarm|claude-swarm)
             tool_dir="$TOOLS_DIR/claude-swarm"
             script_name="swarm"
+            ;;
+        mgw)
+            tool_dir="$TOOLS_DIR/mgw"
+            script_name="bin/mgw.cjs"
             ;;
         *)
             err "Unknown tool: $tool_name"
@@ -145,6 +157,22 @@ cmd_setup() {
         }
     fi
 
+    # mgw
+    if [[ -d "$TOOLS_DIR/mgw" ]]; then
+        log "mgw: updating..."
+        (cd "$TOOLS_DIR/mgw" && git pull --quiet 2>/dev/null) || true
+    else
+        log "mgw: cloning..."
+        git clone --quiet https://github.com/snipcodeit/mgw.git "$TOOLS_DIR/mgw" 2>/dev/null || {
+            warn "Could not clone mgw. You can manually place it in $TOOLS_DIR/mgw/"
+        }
+    fi
+    # mgw needs npm deps (commander)
+    if [[ -d "$TOOLS_DIR/mgw" ]] && [[ ! -d "$TOOLS_DIR/mgw/node_modules" ]]; then
+        log "mgw: installing dependencies..."
+        (cd "$TOOLS_DIR/mgw" && npm install --silent 2>/dev/null) || true
+    fi
+
     ok "Setup complete. Installed tools:"
     cmd_tools
 }
@@ -156,7 +184,7 @@ cmd_tools() {
             name="$(basename "$tool_dir")"
             local status="installed"
             # Check for main script
-            if [[ -x "$tool_dir/godot_preview.sh" ]] || [[ -x "$tool_dir/godot_interact.sh" ]] || [[ -x "$tool_dir/swarm" ]]; then
+            if [[ -x "$tool_dir/godot_preview.sh" ]] || [[ -x "$tool_dir/godot_interact.sh" ]] || [[ -x "$tool_dir/swarm" ]] || [[ -f "$tool_dir/bin/mgw.cjs" ]]; then
                 status="${GREEN}ready${NC}"
             else
                 status="${RED}missing script${NC}"
@@ -182,6 +210,12 @@ cmd_swarm() {
     local tool
     tool="$(resolve_tool swarm)"
     exec "$tool" "$@"
+}
+
+cmd_mgw() {
+    local tool
+    tool="$(resolve_tool mgw)"
+    exec node "$tool" "$@"
 }
 
 cmd_init() {
@@ -368,6 +402,56 @@ Requires: Godot 4.x, ffmpeg, Node.js 18+, git.
 GAK auto-updates itself and all sub-tools on first skill invocation per session (1hr cooldown). No manual update commands needed.
 SKILL
 
+    # --- mgw ---
+    mkdir -p "$skills_dir/mgw"
+    cat > "$skills_dir/mgw/SKILL.md" <<SKILL
+---
+name: mgw
+description: "GitHub issue-to-PR automation. Triage issues, plan work, execute autonomously, and create pull requests. Use when working with GitHub issues or automating the development pipeline."
+argument-hint: <subcommand> [args]
+allowed-tools: Bash(npx tsx *), Bash(node *), Bash(gh *), Read, Write, Edit
+---
+
+# MGW — Issue In, PR Out
+
+GitHub-native issue-to-PR automation for Claude Code.
+
+\`\`\`bash
+npx tsx ${gak_rel}/src/mgw.ts \$ARGUMENTS
+\`\`\`
+
+Returns structured JSON with success/errors/warnings.
+
+## Subcommands
+
+### Discovery & Triage
+- \`issues\` — list/filter GitHub issues
+- \`issue <n>\` — deep five-dimension triage analysis
+- \`next\` — show next unblocked issue
+
+### Execution
+- \`run <n>\` — full autonomous pipeline: triage → plan → execute → verify → PR
+- \`milestone [n]\` — execute entire milestone in dependency order
+
+### Project Management
+- \`status [n]\` — project dashboard / issue status
+- \`sync\` — reconcile local .mgw/ state with GitHub
+- \`init\` — bootstrap repo for MGW usage
+- \`project\` — scaffold milestones and issues from descriptions
+
+### Output
+- \`pr [n]\` — create PR from completed work artifacts
+- \`update <n>\` — post structured status comment to GitHub
+- \`review <n>\` — classify new comments on an issue
+- \`link <ref> <ref>\` — cross-reference issues and PRs
+
+## Flags
+- \`--json\` — machine-readable output
+- \`--force\` — override triage gate
+- \`--dry-run\` — preview without executing
+- \`--base <branch>\` — set PR target branch
+SKILL
+
     # --- visual-iteration (model-only) ---
     mkdir -p "$skills_dir/visual-iteration"
     cat > "$skills_dir/visual-iteration/SKILL.md" <<SKILL
@@ -416,6 +500,7 @@ SKILL
     echo -e "  ${GREEN}/preview-list${NC}     — list project scenes"
     echo -e "  ${GREEN}/interact${NC}         — simulate input + capture"
     echo -e "  ${GREEN}/swarm${NC}            — parallel build orchestration"
+    echo -e "  ${GREEN}/mgw${NC}              — GitHub issue-to-PR automation"
     echo -e "  ${GREEN}/gak-setup${NC}        — install/update tools"
     echo ""
     ok "Claude auto-discovers visual-iteration and swarm-guide knowledge."
@@ -427,6 +512,7 @@ case "${1:-help}" in
     preview) shift; cmd_preview "$@" ;;
     interact) shift; cmd_interact "$@" ;;
     swarm) shift; cmd_swarm "$@" ;;
+    mgw) shift; cmd_mgw "$@" ;;
     init) shift; cmd_init "$@" ;;
     setup) shift; cmd_setup "$@" ;;
     tools) cmd_tools ;;
