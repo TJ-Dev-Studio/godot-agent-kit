@@ -113,12 +113,34 @@ function ensureUpToDate(gakDir: string, toolsDir: string): boolean {
     }
 
     // Pull each sub-tool
-    const subToolDirs = ["godot-preview", "godot-interact", "claude-swarm"];
+    const subToolDirs = ["godot-preview", "godot-interact", "claude-swarm", "mgw"];
     for (const name of subToolDirs) {
       const dir = resolve(toolsDir, name);
       if (isGitRepo(dir)) {
+        const subLockBefore = existsSync(resolve(dir, "package-lock.json"))
+          ? statSync(resolve(dir, "package-lock.json")).mtimeMs
+          : 0;
+
         if (gitPull(dir)) {
           anyUpdated = true;
+
+          // Re-install npm deps if package-lock changed (mgw has node deps)
+          if (subLockBefore > 0) {
+            const subLockAfter = existsSync(resolve(dir, "package-lock.json"))
+              ? statSync(resolve(dir, "package-lock.json")).mtimeMs
+              : 0;
+            if (subLockAfter !== subLockBefore) {
+              try {
+                execFileSync("npm", ["install", "--silent"], {
+                  cwd: dir,
+                  stdio: "pipe",
+                  timeout: 30_000,
+                });
+              } catch {
+                // Non-fatal
+              }
+            }
+          }
         }
       }
     }
@@ -161,6 +183,7 @@ export function checkEnvironment(): Environment {
     { name: "godot-preview", script: "godot_preview.sh" },
     { name: "godot-interact", script: "godot_interact.sh" },
     { name: "claude-swarm", script: "swarm" },
+    { name: "mgw", script: "bin/mgw.cjs" },
   ];
 
   for (const tool of subTools) {
@@ -191,6 +214,7 @@ export function resolveToolPath(
     "godot-preview": "godot-preview/godot_preview.sh",
     "godot-interact": "godot-interact/godot_interact.sh",
     "claude-swarm": "claude-swarm/swarm",
+    "mgw": "mgw/bin/mgw.cjs",
   };
 
   const rel = map[toolName];

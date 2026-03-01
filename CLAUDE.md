@@ -1,6 +1,6 @@
 # Godot Agent Kit (GAK)
 
-Skills abstraction layer for AI agents working with Godot 4 projects. Imports functionality from dependency repos (godot-preview, godot-interact, claude-swarm) and exposes them as structured Claude Code Skills that agents discover and invoke naturally.
+Skills abstraction layer for AI agents working with Godot 4 projects. Imports functionality from dependency repos (godot-preview, godot-interact, claude-swarm, mgw) and exposes them as structured Claude Code Skills that agents discover and invoke naturally.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ LLM Agent
     ↓ calls TypeScript orchestrator
 src/<skill>.ts  (validates inputs, runs sub-tool, parses output → JSON)
     ↓ shells out to
-tools/godot-preview/  |  tools/godot-interact/  |  tools/claude-swarm/
+tools/godot-preview/  |  tools/godot-interact/  |  tools/claude-swarm/  |  tools/mgw/
 ```
 
 All skills return structured JSON with `{ success, warnings, errors, ... }`. The agent never needs to know CLI syntax or parse raw stdout.
@@ -42,6 +42,7 @@ All skills return structured JSON with `{ success, warnings, errors, ... }`. The
 | `preview-list` | `/preview-list <project>` | List .tscn scenes |
 | `interact` | `/interact <project> <scene> --actions <json>` | Simulate input + capture |
 | `swarm` | `/swarm <subcommand>` | Parallel build orchestration |
+| `mgw` | `/mgw <subcommand>` | GitHub issue-to-PR automation |
 | `setup` | `/setup` | Install sub-tools + Node deps |
 
 ### Model-Invocable (auto-discovered by context)
@@ -76,7 +77,7 @@ This installs skills into your project's `.claude/skills/` with correct paths. F
 
 ### What `gak init` does
 
-1. Clones sub-tool repos (godot-preview, godot-interact, claude-swarm) if missing
+1. Clones sub-tool repos (godot-preview, godot-interact, claude-swarm, mgw) if missing
 2. Installs Node.js dependencies for the TypeScript layer
 3. Generates `.claude/skills/*/SKILL.md` files with paths relative to your project
 4. Claude agents auto-discover the skills on startup
@@ -107,6 +108,27 @@ For tasks too large for a single Claude instance:
 - **Worktrees**: Each agent works in an isolated git worktree branch.
 - **Claim Locks**: File-based locks prevent double-claiming.
 
+## GitHub Issue-to-PR Automation
+
+MGW automates the full development pipeline from GitHub issues to pull requests:
+
+```bash
+/mgw issues                             # Browse open issues
+/mgw issue 42                           # Deep triage analysis
+/mgw next                               # Next unblocked issue
+/mgw run 42                             # Full pipeline: triage → plan → execute → verify → PR
+/mgw milestone 3                        # Execute entire milestone in dependency order
+/mgw status                             # Project dashboard
+/mgw sync                               # Reconcile local state with GitHub
+```
+
+### When to Use MGW
+
+- Working with GitHub issues that need implementation
+- Automating the plan-execute-verify-PR cycle
+- Running milestones with multiple dependent issues
+- Keeping project state in sync across team members
+
 ## Sub-Tools (Dependencies)
 
 | Tool | Repo | Purpose |
@@ -114,6 +136,7 @@ For tasks too large for a single Claude instance:
 | `godot-preview` | TJ-Dev-Studio/godot-preview | Scene capture (screenshot) |
 | `godot-interact` | TJ-Dev-Studio/godot-interact | Input simulation + capture |
 | `claude-swarm` | TJ-Dev-Studio/claude-swarm | Parallel agent orchestration |
+| `mgw` | snipcodeit/mgw | GitHub issue-to-PR automation |
 
 ## Environment Variables
 
