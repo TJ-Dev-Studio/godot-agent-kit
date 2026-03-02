@@ -63,6 +63,11 @@ export interface MgwResult extends GakResult {
   output: string;
 }
 
+export interface AiControlResult extends GakResult {
+  subcommand: string;
+  response: Record<string, unknown>;
+}
+
 // --- Input Schemas (Zod) ---
 
 export const ActionWaitSchema = z.object({
