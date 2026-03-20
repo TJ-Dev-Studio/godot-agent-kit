@@ -63,11 +63,6 @@ export interface MgwResult extends GakResult {
   output: string;
 }
 
-export interface AiControlResult extends GakResult {
-  subcommand: string;
-  response: Record<string, unknown>;
-}
-
 // --- Input Schemas (Zod) ---
 
 export const ActionWaitSchema = z.object({
@@ -100,12 +95,20 @@ export const ActionScrollSchema = z.object({
   amount: z.number().int().positive().default(3),
 });
 
+export const ActionJoystickSchema = z.object({
+  type: z.literal("joystick"),
+  dx: z.number(),
+  dy: z.number(),
+  duration: z.number().nonnegative().optional(),
+});
+
 export const ActionSchema = z.discriminatedUnion("type", [
   ActionWaitSchema,
   ActionTouchSchema,
   ActionDragSchema,
   ActionKeySchema,
   ActionScrollSchema,
+  ActionJoystickSchema,
 ]);
 
 export const ActionsPayloadSchema = z.object({
