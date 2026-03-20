@@ -40,6 +40,3 @@ When you need to verify how a scene responds to input:
 - Increase render seconds for scenes with animations
 - Output PNGs land in `/tmp/godot-preview/` by default
 
-## For Large Projects
-
-When a task decomposes into 3+ independent work streams with clear file boundaries, suggest swarm orchestration via `/swarm init`.

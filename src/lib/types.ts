@@ -30,34 +30,6 @@ export interface InteractResult extends GakResult {
   log_path?: string;
 }
 
-export interface SwarmTask {
-  number: number;
-  title: string;
-  status: "available" | "claimed" | "complete";
-  branch?: string;
-}
-
-export interface SwarmStatusResult extends GakResult {
-  total: number;
-  available: number;
-  claimed: number;
-  complete: number;
-  tasks: SwarmTask[];
-}
-
-export interface SwarmClaimResult extends GakResult {
-  task_number: number;
-  title: string;
-  branch: string;
-  worktree_path: string;
-  task_file: string;
-  spec_file: string;
-}
-
-export interface SwarmGenericResult extends GakResult {
-  output: string;
-}
-
 export interface MgwResult extends GakResult {
   subcommand: string;
   output: string;

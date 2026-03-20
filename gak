@@ -34,7 +34,6 @@ COMMANDS:
   init       Install GAK skills into a Godot project (run once per project)
   preview    Capture rendered screenshots from scenes (wraps godot-preview)
   interact   Simulate player input and capture results (wraps godot-interact)
-  swarm      Orchestrate parallel Claude Code instances (wraps claude-swarm)
   mgw        GitHub issue-to-PR automation (wraps mgw)
   setup      Install/update sub-tools
   tools      List installed tools
@@ -44,7 +43,6 @@ USAGE:
   gak init [project-path]
   gak preview capture <project> <scene> [options]
   gak interact <project> <scene> --actions <actions.json> [options]
-  gak swarm init|claim|status|prompt|merge|validate|complete [args]
   gak mgw issues|run|status|sync|pr|milestone|init|next [args]
   gak setup
 
@@ -55,12 +53,6 @@ EXAMPLES:
   # Simulate a touch-drag and capture the result
   gak interact ./godot_project res://scenes/lobby.tscn \
     --actions '{"actions":[{"type":"wait","seconds":2},{"type":"drag","from":[540,960],"to":[200,960],"duration":1}]}'
-
-  # Orchestrate parallel build with multiple Claude instances
-  gak swarm init
-  gak swarm claim 3
-  gak swarm status
-  gak swarm prompt
 
   # GitHub issue-to-PR automation
   gak mgw issues
@@ -77,7 +69,6 @@ ENVIRONMENT:
 SUB-TOOL REPOS:
   godot-preview   → tools/godot-preview/   (visual capture)
   godot-interact  → tools/godot-interact/  (input simulation)
-  claude-swarm    → tools/claude-swarm/    (parallel agent orchestration)
   mgw             → tools/mgw/            (GitHub issue-to-PR automation)
 EOF
 }
@@ -96,10 +87,6 @@ resolve_tool() {
         interact|godot-interact)
             tool_dir="$TOOLS_DIR/godot-interact"
             script_name="godot_interact.sh"
-            ;;
-        swarm|claude-swarm)
-            tool_dir="$TOOLS_DIR/claude-swarm"
-            script_name="swarm"
             ;;
         mgw)
             tool_dir="$TOOLS_DIR/mgw"
@@ -146,17 +133,6 @@ cmd_setup() {
         }
     fi
 
-    # claude-swarm
-    if [[ -d "$TOOLS_DIR/claude-swarm" ]]; then
-        log "claude-swarm: updating..."
-        (cd "$TOOLS_DIR/claude-swarm" && git pull --quiet 2>/dev/null) || true
-    else
-        log "claude-swarm: cloning..."
-        git clone --quiet https://github.com/TJ-Dev-Studio/claude-swarm.git "$TOOLS_DIR/claude-swarm" 2>/dev/null || {
-            warn "Could not clone claude-swarm. You can manually place it in $TOOLS_DIR/claude-swarm/"
-        }
-    fi
-
     # mgw
     if [[ -d "$TOOLS_DIR/mgw" ]]; then
         log "mgw: updating..."
@@ -184,7 +160,7 @@ cmd_tools() {
             name="$(basename "$tool_dir")"
             local status="installed"
             # Check for main script
-            if [[ -x "$tool_dir/godot_preview.sh" ]] || [[ -x "$tool_dir/godot_interact.sh" ]] || [[ -x "$tool_dir/swarm" ]] || [[ -f "$tool_dir/bin/mgw.cjs" ]]; then
+            if [[ -x "$tool_dir/godot_preview.sh" ]] || [[ -x "$tool_dir/godot_interact.sh" ]] || [[ -f "$tool_dir/bin/mgw.cjs" ]]; then
                 status="${GREEN}ready${NC}"
             else
                 status="${RED}missing script${NC}"
@@ -203,12 +179,6 @@ cmd_preview() {
 cmd_interact() {
     local tool
     tool="$(resolve_tool interact)"
-    exec "$tool" "$@"
-}
-
-cmd_swarm() {
-    local tool
-    tool="$(resolve_tool swarm)"
     exec "$tool" "$@"
 }
 
@@ -346,35 +316,6 @@ After interaction, read the output PNG to see the result.
 - \`-v, --verbose\`
 SKILL
 
-    # --- swarm ---
-    mkdir -p "$skills_dir/swarm"
-    cat > "$skills_dir/swarm/SKILL.md" <<SKILL
----
-name: swarm
-description: Orchestrate parallel Claude Code instances for large-scale Godot builds. Use when a task decomposes into 3+ independent work streams with clear file ownership boundaries.
-disable-model-invocation: true
-argument-hint: <subcommand> [args]
-allowed-tools: Bash(npx tsx *), Read, Write, Edit
----
-
-# Swarm — Parallel Build Orchestration
-
-\`\`\`bash
-npx tsx ${gak_rel}/src/swarm.ts \$ARGUMENTS
-\`\`\`
-
-## Subcommands
-- \`init\` — scaffold .swarm/ directory
-- \`task-add "Title"\` — create a task
-- \`task-list\` — list all tasks
-- \`claim [N]\` — claim next or specific task
-- \`status\` — show overview
-- \`prompt\` — generate startup text for new agents
-- \`validate N\` — check file ownership
-- \`complete N\` — mark done
-- \`merge N\` — merge task branch
-SKILL
-
     # --- setup ---
     mkdir -p "$skills_dir/setup"
     local gak_repo_url
@@ -382,7 +323,7 @@ SKILL
     cat > "$skills_dir/setup/SKILL.md" <<SKILL
 ---
 name: gak-setup
-description: Install or update GAK sub-tools and dependencies. Run this if preview/interact/swarm skills fail with missing tools. Self-bootstrapping — clones GAK if not present.
+description: Install or update GAK sub-tools and dependencies. Run this if preview/interact skills fail with missing tools. Self-bootstrapping — clones GAK if not present.
 disable-model-invocation: true
 allowed-tools: Bash(git clone *), Bash(${gak_rel}/gak *), Bash(npm *), Bash(cd *)
 ---
@@ -471,26 +412,6 @@ user-invocable: false
 6. Capture again to verify
 
 Use /interact to test how scenes respond to player input.
-For large builds (3+ independent streams), suggest /swarm init.
-SKILL
-
-    # --- swarm-guide (model-only) ---
-    mkdir -p "$skills_dir/swarm-guide"
-    cat > "$skills_dir/swarm-guide/SKILL.md" <<SKILL
----
-name: swarm-guide
-description: Knowledge about parallel build orchestration. Use when user mentions multiple instances or task decomposes into 3+ independent work streams.
-user-invocable: false
----
-
-# When to Suggest Swarm
-
-- Task decomposes into 3+ independent work streams
-- Multiple scenes/components compose into a whole
-- File boundaries are clear (different agents own different files)
-
-File ownership is the key principle: every file owned by exactly one task, no conflicts.
-Use /swarm init to get started.
 SKILL
 
     ok "Skills installed to $skills_dir/"
@@ -499,11 +420,10 @@ SKILL
     echo -e "  ${GREEN}/preview-capture${NC}  — render scene to PNG"
     echo -e "  ${GREEN}/preview-list${NC}     — list project scenes"
     echo -e "  ${GREEN}/interact${NC}         — simulate input + capture"
-    echo -e "  ${GREEN}/swarm${NC}            — parallel build orchestration"
     echo -e "  ${GREEN}/mgw${NC}              — GitHub issue-to-PR automation"
     echo -e "  ${GREEN}/gak-setup${NC}        — install/update tools"
     echo ""
-    ok "Claude auto-discovers visual-iteration and swarm-guide knowledge."
+    ok "Claude auto-discovers visual-iteration knowledge."
     ok "Done! Fire up Claude Code and start building."
 }
 
@@ -511,7 +431,6 @@ SKILL
 case "${1:-help}" in
     preview) shift; cmd_preview "$@" ;;
     interact) shift; cmd_interact "$@" ;;
-    swarm) shift; cmd_swarm "$@" ;;
     mgw) shift; cmd_mgw "$@" ;;
     init) shift; cmd_init "$@" ;;
     setup) shift; cmd_setup "$@" ;;

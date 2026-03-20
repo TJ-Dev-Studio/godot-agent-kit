@@ -37,8 +37,7 @@ GAK is a thin CLI router over specialized sub-tools:
 gak (this repo)
 ├── tools/
 │   ├── godot-preview/    → visual capture
-│   ├── godot-interact/   → input simulation + capture
-│   └── claude-swarm/     → parallel agent orchestration
+│   └── godot-interact/   → input simulation + capture
 ```
 
 Each sub-tool is an independent repo that can be used standalone. GAK provides the unified `gak <tool> <command>` interface and handles installation.
@@ -49,14 +48,12 @@ Each sub-tool is an independent repo that can be used standalone. GAK provides t
 |------|-------------|------|
 | [godot-preview](https://github.com/TJ-Dev-Studio/godot-preview) | Render scenes to PNG without a display | Standalone |
 | [godot-interact](https://github.com/TJ-Dev-Studio/godot-interact) | Simulate player input + capture results | Standalone |
-| [claude-swarm](https://github.com/TJ-Dev-Studio/claude-swarm) | Orchestrate parallel Claude Code instances | Standalone |
 
 ## How It Works
 
 1. **godot-preview** launches Godot with `--write-movie` to render frames offscreen, extracts PNGs with ffmpeg
 2. **godot-interact** injects an input-replay script into the scene, runs Godot with `--write-movie`, captures the result
-3. **claude-swarm** splits large builds across multiple Claude Code sessions with task claiming, file ownership, and git worktree isolation
-4. **gak** routes commands to the right sub-tool and manages installation
+3. **gak** routes commands to the right sub-tool and manages installation
 
 No display, no screen recording permissions, no GPU window required.
 

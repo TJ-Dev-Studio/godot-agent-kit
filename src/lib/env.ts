@@ -113,7 +113,7 @@ function ensureUpToDate(gakDir: string, toolsDir: string): boolean {
     }
 
     // Pull each sub-tool
-    const subToolDirs = ["godot-preview", "godot-interact", "claude-swarm", "mgw"];
+    const subToolDirs = ["godot-preview", "godot-interact", "mgw"];
     for (const name of subToolDirs) {
       const dir = resolve(toolsDir, name);
       if (isGitRepo(dir)) {
@@ -182,7 +182,6 @@ export function checkEnvironment(): Environment {
   const subTools = [
     { name: "godot-preview", script: "godot_preview.sh" },
     { name: "godot-interact", script: "godot_interact.sh" },
-    { name: "claude-swarm", script: "swarm" },
     { name: "mgw", script: "bin/mgw.cjs" },
   ];
 
@@ -213,7 +212,6 @@ export function resolveToolPath(
   const map: Record<string, string> = {
     "godot-preview": "godot-preview/godot_preview.sh",
     "godot-interact": "godot-interact/godot_interact.sh",
-    "claude-swarm": "claude-swarm/swarm",
     "mgw": "mgw/bin/mgw.cjs",
   };
 

@@ -1,6 +1,6 @@
 # Godot Agent Kit (GAK)
 
-Skills abstraction layer for AI agents working with Godot 4 projects. Imports functionality from dependency repos (godot-preview, godot-interact, claude-swarm, mgw) and exposes them as structured Claude Code Skills that agents discover and invoke naturally.
+Skills abstraction layer for AI agents working with Godot 4 projects. Imports functionality from dependency repos (godot-preview, godot-interact, mgw) and exposes them as structured Claude Code Skills that agents discover and invoke naturally.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ LLM Agent
     ↓ calls TypeScript orchestrator
 src/<skill>.ts  (validates inputs, runs sub-tool, parses output → JSON)
     ↓ shells out to
-tools/godot-preview/  |  tools/godot-interact/  |  tools/claude-swarm/  |  tools/mgw/
+tools/godot-preview/  |  tools/godot-interact/  |  tools/mgw/
 ```
 
 All skills return structured JSON with `{ success, warnings, errors, ... }`. The agent never needs to know CLI syntax or parse raw stdout.
@@ -41,7 +41,6 @@ All skills return structured JSON with `{ success, warnings, errors, ... }`. The
 | `preview-capture` | `/preview-capture <project> <scene>` | Render scene to PNG |
 | `preview-list` | `/preview-list <project>` | List .tscn scenes |
 | `interact` | `/interact <project> <scene> --actions <json>` | Simulate input + capture |
-| `swarm` | `/swarm <subcommand>` | Parallel build orchestration |
 | `mgw` | `/mgw <subcommand>` | GitHub issue-to-PR automation |
 | `setup` | `/setup` | Install sub-tools + Node deps |
 
@@ -50,7 +49,6 @@ All skills return structured JSON with `{ success, warnings, errors, ... }`. The
 | Skill | Purpose |
 |-------|---------|
 | `visual-iteration` | Teaches the capture→inspect→edit→re-capture loop |
-| `swarm-guide` | Teaches when to suggest parallel orchestration |
 
 ## Visual Iteration Loop
 
@@ -77,36 +75,10 @@ This installs skills into your project's `.claude/skills/` with correct paths. F
 
 ### What `gak init` does
 
-1. Clones sub-tool repos (godot-preview, godot-interact, claude-swarm, mgw) if missing
+1. Clones sub-tool repos (godot-preview, godot-interact, mgw) if missing
 2. Installs Node.js dependencies for the TypeScript layer
 3. Generates `.claude/skills/*/SKILL.md` files with paths relative to your project
 4. Claude agents auto-discover the skills on startup
-
-## Parallel Build Orchestration
-
-For tasks too large for a single Claude instance:
-
-```bash
-/swarm init                              # Scaffold .swarm/
-/swarm task-add "Build terrain"          # Add tasks
-# Edit .swarm/tasks/N.md and .swarm/SPEC.md
-/swarm prompt                            # Generate startup text for new agents
-/swarm status                            # Monitor progress
-/swarm validate 1 && /swarm merge 1     # Validate and merge
-```
-
-### When to Use Swarm
-
-- Task decomposes into 3+ independent work streams
-- Multiple scenes/components compose into a whole
-- File boundaries are clear (different agents own different files)
-
-### Key Concepts
-
-- **File Ownership**: Each task exclusively owns files. No two tasks write the same file.
-- **Shared Spec**: `.swarm/SPEC.md` — all agents read, none modify.
-- **Worktrees**: Each agent works in an isolated git worktree branch.
-- **Claim Locks**: File-based locks prevent double-claiming.
 
 ## GitHub Issue-to-PR Automation
 
@@ -135,7 +107,6 @@ MGW automates the full development pipeline from GitHub issues to pull requests:
 |------|------|---------|
 | `godot-preview` | TJ-Dev-Studio/godot-preview | Scene capture (screenshot) |
 | `godot-interact` | TJ-Dev-Studio/godot-interact | Input simulation + capture |
-| `claude-swarm` | TJ-Dev-Studio/claude-swarm | Parallel agent orchestration |
 | `mgw` | snipcodeit/mgw | GitHub issue-to-PR automation |
 
 ## Environment Variables
@@ -152,4 +123,3 @@ MGW automates the full development pipeline from GitHub issues to pull requests:
 - Increase `--seconds` for scenes with animations or orbit cameras
 - All skills return structured JSON with success/error/warning fields
 - Output PNGs land in `/tmp/godot-preview/` by default
-- For large builds, always suggest swarm orchestration before attempting solo

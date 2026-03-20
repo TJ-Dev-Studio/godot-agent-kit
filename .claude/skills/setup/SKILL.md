@@ -21,7 +21,6 @@ This will:
 1. Clone or update sub-tool repos into `tools/`:
    - `godot-preview` — scene screenshot capture
    - `godot-interact` — input simulation + capture
-   - `claude-swarm` — parallel agent orchestration
 2. Install Node.js dependencies for the TypeScript abstraction layer
 
 ## Verify
@@ -39,4 +38,4 @@ All tools should show "ready" status.
 - **Godot 4.x**: Set `GODOT_BIN` env var if not at default macOS path
 - **ffmpeg**: Install with `brew install ffmpeg`
 - **Node.js 18+**: For the TypeScript skill layer
-- **git**: For sub-tool cloning and swarm worktrees
+- **git**: For sub-tool cloning
